@@ -259,6 +259,12 @@ pub(crate) fn completion_items(
         res.sort_by(|item1, item2| item1.sort_text.cmp(&item2.sort_text));
         res.truncate(limit);
     }
+    let len = res.len();
+
+    if len != 0 {
+        tracing::error!("{}, {}", version.unwrap_or(0), version.unwrap_or(0) as usize % len);
+        res.rotate_right(version.unwrap_or(0) as usize % len);
+    }
 
     res
 }

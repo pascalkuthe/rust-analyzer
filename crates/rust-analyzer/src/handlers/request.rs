@@ -8,7 +8,7 @@ use std::{
     process::{self, Stdio},
 };
 
-use anyhow::Context;
+use anyhow::{bail, Context};
 
 use ide::{
     AnnotationConfig, AssistKind, AssistResolveStrategy, Cancellable, CompletionFieldsToResolve,
@@ -21,11 +21,12 @@ use lsp_server::ErrorCode;
 use lsp_types::{
     CallHierarchyIncomingCall, CallHierarchyIncomingCallsParams, CallHierarchyItem,
     CallHierarchyOutgoingCall, CallHierarchyOutgoingCallsParams, CallHierarchyPrepareParams,
-    CodeLens, CompletionItem, FoldingRange, FoldingRangeParams, HoverContents, InlayHint,
-    InlayHintParams, Location, LocationLink, Position, PrepareRenameResponse, Range, RenameParams,
-    ResourceOp, ResourceOperationKind, SemanticTokensDeltaParams, SemanticTokensFullDeltaResult,
-    SemanticTokensParams, SemanticTokensRangeParams, SemanticTokensRangeResult,
-    SemanticTokensResult, SymbolInformation, SymbolTag, TextDocumentIdentifier, Url, WorkspaceEdit,
+    CodeLens, CompletionItem, CompletionTriggerKind, FoldingRange, FoldingRangeParams,
+    HoverContents, InlayHint, InlayHintParams, Location, LocationLink, Position,
+    PrepareRenameResponse, Range, RenameParams, ResourceOp, ResourceOperationKind,
+    SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensParams,
+    SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult, SymbolInformation,
+    SymbolTag, TextDocumentIdentifier, Url, WorkspaceEdit,
 };
 use paths::Utf8PathBuf;
 use project_model::{CargoWorkspace, ManifestPath, ProjectWorkspaceKind, TargetKind};
@@ -1068,6 +1069,7 @@ pub(crate) fn handle_completion(
     let _p = tracing::info_span!("handle_completion").entered();
     let mut position = from_proto::file_position(&snap, text_document_position.clone())?;
     let line_index = snap.file_line_index(position.file_id)?;
+    let context2 = context.clone();
     let completion_trigger_character =
         context.and_then(|ctx| ctx.trigger_character).and_then(|s| s.chars().next());
 
@@ -1083,6 +1085,11 @@ pub(crate) fn handle_completion(
         None => return Ok(None),
         Some(items) => items,
     };
+    if context2.is_some_and(|ctx| {
+        ctx.trigger_kind == CompletionTriggerKind::TRIGGER_FOR_INCOMPLETE_COMPLETIONS
+    }) {
+        bail!("TEST")
+    }
 
     let items = to_proto::completion_items(
         &snap.config,
@@ -1145,12 +1152,14 @@ pub(crate) fn handle_completion_resolve(
         resolved_completions,
     );
 
+    tracing::error!("resolve {:?}", resolve_data.completion_item_index);
     let mut resolved_completion =
         if resolved_completions.get(resolve_data.completion_item_index).is_some() {
             resolved_completions.swap_remove(resolve_data.completion_item_index)
         } else {
             return Ok(original_completion);
         };
+    tracing::error!("resolve {:?}", resolved_completion.label);
 
     if !resolve_data.imports.is_empty() {
         let additional_edits = snap
